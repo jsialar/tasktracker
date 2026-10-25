@@ -1,4 +1,4 @@
-# Task Assignment
+# Description
 
 A web app for creating tasks (with nested subtasks), assigning them to developers with the right skills, and tracking their status. If a task is created without skills, AI (Google Gemini) identifies them from the title.
 
