@@ -1,0 +1,52 @@
+# Starts the whole app: `docker compose up --build`, then open http://localhost:8080
+# Values like ${GEMINI_API_KEY} are read from the .env file next to this one.
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: taskdb
+    ports:
+      # Only reachable from this machine; used when running the backend or tests outside Docker.
+      # 5433 avoids clashing with a locally installed Postgres on 5432.
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # SQL files here run once, when the volume is first created
+      - ./db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # -h 127.0.0.1 checks over TCP, which only opens once the db/*.sql scripts have finished
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d taskdb"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build: ./backend
+    init: true # forwards stop signals to node so the container stops promptly
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/taskdb
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
+    # No published port: the browser reaches the API through nginx at http://localhost:8080/api
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  db-data:
